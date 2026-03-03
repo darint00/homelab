@@ -1,3 +1,8 @@
 {
-    "workbench.colorTheme": "Monzo Contrast (rainglow)"
+    "workbench.colorTheme": "Monzo Contrast (rainglow)",
+    "workbench.colorCustomizations": {
+        "titleBar.activeBackground": "#90ac92",
+        "titleBar.activeForeground": "#ffffff",
+        "titleBar.inactiveBackground": "#90ac92",
+        "titleBar.inactiveForeground": "#ffffff",
 }

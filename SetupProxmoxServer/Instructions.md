@@ -7,7 +7,7 @@
 
 2.  ### Install Sudo
     apt update
-    apt install root -y     # (on server)
+    apt install sudo -y     # (on server)
 
 3.  ### Create darint user (sudo nopw)
     useradd -m -s /bin/bash "$USERNAME"

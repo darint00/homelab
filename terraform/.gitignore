@@ -1,0 +1,25 @@
+# Terraform state and secret files — never commit these
+.terraform/
+.terraform.lock.hcl
+terraform.tfstate
+terraform.tfstate.backup
+terraform.tfstate.d/
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+
+# Exported credentials
+kubeconfig
+talosconfig
+*.kubeconfig
+*.talosconfig
+
+# Crash logs
+crash.log
+crash.*.log
+
+# Override files
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
