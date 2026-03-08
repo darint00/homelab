@@ -1,0 +1,39 @@
+# Copy to terraform.tfvars and fill in real values.
+# Do not commit terraform.tfvars (contains secrets).
+
+# --- Proxmox ---
+proxmox_endpoint  = "https://192.168.86.240:8006"
+proxmox_api_token = "terraform@pve!terraform=<replace-with-secret>"
+proxmox_insecure  = true
+proxmox_ssh_user  = "terraform"
+proxmox_node      = "pve"
+
+# --- Cluster ---
+cluster_name    = "dc1-talos"
+vm_name_prefix  = "dc1-talos"
+talos_version   = "v1.9.3"
+install_disk    = "/dev/sda"
+
+# --- Networking (static IPs) ---
+vm_network_bridge = "vmbr0"
+controlplane_ip   = "192.168.86.130"
+worker_ip         = "192.168.86.131"
+node_cidr         = 24
+node_gateway      = "192.168.86.1"
+dns_servers       = ["192.168.86.1", "1.1.1.1"]
+
+# Bootstrap endpoints — DHCP addresses discovered after VM boot.
+# Leave empty for first run.  See README.md for the deploy workflow.
+controlplane_bootstrap_endpoint = ""
+worker_bootstrap_endpoint       = ""
+
+# --- Datastores ---
+vm_datastore     = "local-lvm"
+vm_iso_datastore = "local"
+
+# --- VM sizing + IDs ---
+node1_vmid     = 320
+node2_vmid     = 321
+node_cpu_cores = 2
+node_memory    = 4096
+node_disk_size = 40

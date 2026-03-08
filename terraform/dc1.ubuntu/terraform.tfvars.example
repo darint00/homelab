@@ -1,0 +1,52 @@
+# Copy this file to terraform.tfvars and fill in real values.
+# Do not commit terraform.tfvars (contains secrets).
+
+# --- Proxmox ---
+proxmox_endpoint  = "https://192.168.86.240:8006"
+proxmox_api_token = "terraform@pve!terraform=<replace-with-secret>"
+proxmox_insecure  = true
+proxmox_ssh_user  = "terraform"
+proxmox_node      = "pve"
+
+# --- Naming ---
+cluster_name    = "dc1-ubuntu"
+vm_name_prefix  = "dc1-ubuntu"
+
+# --- Ubuntu image ---
+ubuntu_image_url       = "https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img"
+ubuntu_image_file_name = "jammy-server-cloudimg-amd64.qcow2"
+
+# --- Datastores + network ---
+vm_datastore         = "local-lvm"
+vm_image_datastore   = "local"
+cloud_init_datastore = "local-lvm"
+cloud_init_snippets_datastore = "local"
+vm_network_bridge    = "vmbr0"
+
+dns_servers = ["192.168.86.1", "1.1.1.1"]
+
+# --- Access ---
+cloud_init_username = "ubuntu"
+cloud_init_password = ""
+cloud_init_ssh_public_keys = [
+  "ssh-ed25519 AAAA...replace-me... user@host"
+]
+
+# --- VM sizing + IDs ---
+node1_vmid      = 310
+node2_vmid      = 311
+node_cpu_cores  = 2
+node_memory     = 4096
+node_disk_size  = 40
+
+# --- IPv4 (use dhcp or static CIDR) ---
+node1_ipv4_address = "dhcp"
+node1_ipv4_gateway = ""
+node2_ipv4_address = "dhcp"
+node2_ipv4_gateway = ""
+
+# Static example:
+# node1_ipv4_address = "192.168.86.210/24"
+# node1_ipv4_gateway = "192.168.86.1"
+# node2_ipv4_address = "192.168.86.211/24"
+# node2_ipv4_gateway = "192.168.86.1"

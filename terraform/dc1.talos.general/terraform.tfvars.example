@@ -1,0 +1,17 @@
+# ── Proxmox connection ─────────────────────────
+proxmox_endpoint  = "https://<PROXMOX_IP>:8006"
+proxmox_api_token = "<USER>@<REALM>!<TOKEN_ID>=<SECRET>"
+proxmox_node      = "pve"
+
+# ── Cluster ────────────────────────────────────
+cluster_name    = "dc1-talos"
+vm_name_prefix  = "dc1-talos"
+
+# ── Nodes ──────────────────────────────────────
+# node_count controls how many VMs are created (1 cp + N-1 workers).
+# base_ip is the first node's IP; subsequent nodes increment the last octet.
+# bootstrap_endpoints is populated by cluster.sh during deploy.
+node_count = 2
+base_ip    = "192.168.86.130"
+base_vmid  = 320
+bootstrap_endpoints = {}
