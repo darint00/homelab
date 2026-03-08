@@ -107,56 +107,19 @@ variable "cloud_init_ssh_public_keys" {
   default     = []
 }
 
-variable "node1_vmid" {
-  description = "VMID for first Ubuntu node"
-  type        = number
-  default     = 310
-}
 
-variable "node2_vmid" {
-  description = "VMID for second Ubuntu node"
-  type        = number
-  default     = 311
-}
-
-variable "node_cpu_cores" {
-  description = "vCPU cores per node"
-  type        = number
-  default     = 2
-}
-
-variable "node_memory" {
-  description = "Memory (MB) per node"
-  type        = number
-  default     = 4096
-}
-
-variable "node_disk_size" {
-  description = "Root disk size (GB) per node"
-  type        = number
-  default     = 40
-}
-
-variable "node1_ipv4_address" {
-  description = "Node 1 IPv4 CIDR or 'dhcp'"
-  type        = string
-  default     = "dhcp"
-}
-
-variable "node1_ipv4_gateway" {
-  description = "Node 1 IPv4 gateway. Leave empty when node1_ipv4_address is 'dhcp'."
-  type        = string
-  default     = ""
-}
-
-variable "node2_ipv4_address" {
-  description = "Node 2 IPv4 CIDR or 'dhcp'"
-  type        = string
-  default     = "dhcp"
-}
-
-variable "node2_ipv4_gateway" {
-  description = "Node 2 IPv4 gateway. Leave empty when node2_ipv4_address is 'dhcp'."
-  type        = string
-  default     = ""
+# New variable for dynamic nodes
+variable "nodes" {
+  description = "Map of node definitions. Each key is a node name, value is an object with vm_id, name, ipv4_address, ipv4_gateway, role, startup, cpu_cores, memory, disk_size."
+  type = map(object({
+    vm_id         = number
+    name          = string
+    ipv4_address  = string
+    ipv4_gateway  = string
+    role          = string
+    startup       = string
+    cpu_cores     = number
+    memory        = number
+    disk_size     = number
+  }))
 }

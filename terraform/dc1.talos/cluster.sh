@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 #
-# cluster.sh — Manage a 2-node Talos Kubernetes cluster on Proxmox.
+# cluster.sh — Manage an N-node Talos Kubernetes cluster on Proxmox.
 #
 # Usage:
-#   ./cluster.sh --deploy   # full deploy from zero to working cluster
-#   ./cluster.sh --destroy  # tear down the cluster and clean up
+#   ./cluster.sh --deploy [--nodes N]  # deploy cluster (optionally set node count)
+#   ./cluster.sh --destroy             # tear down the cluster
 #
 set -euo pipefail
 
@@ -12,7 +12,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 TFVARS="terraform.tfvars"
-KUBECONFIG_FILE="$HOME/.kube/dc1-talos-claude.yaml"
 
 # ── Helpers ──────────────────────────────────
 
@@ -22,14 +21,16 @@ ok()   { printf '\033[1;32m  ✔ %s\033[0m\n' "$*"; }
 
 usage() {
   cat <<EOF
-Usage: $(basename "$0") <command>
+Usage: $(basename "$0") <command> [options]
 
 Commands:
-  --deploy   Create VMs, apply Talos config, bootstrap cluster, extract kubeconfig
-  --destroy  Tear down the cluster and clean up
+  --deploy [--nodes N]   Deploy the cluster. Optionally set node count
+                         (1 controlplane + N-1 workers).
+  --destroy              Tear down the cluster and clean up.
 
 Examples:
-  ./$(basename "$0") --deploy
+  ./$(basename "$0") --deploy              # deploy using node_count in terraform.tfvars
+  ./$(basename "$0") --deploy --nodes 3    # set node_count=3, then deploy
   ./$(basename "$0") --destroy
 EOF
   exit 0
@@ -43,9 +44,20 @@ tfvar() {
 
 # ── Command dispatch ─────────────────────────
 
-ACTION="${1:-}"
-case "$ACTION" in
-  --destroy|--deploy) ;;
+ACTION=""
+REQUESTED_NODES=0
+
+case "${1:-}" in
+  --destroy) ACTION="destroy" ;;
+  --deploy)
+    ACTION="deploy"
+    shift
+    if [[ "${1:-}" == "--nodes" ]]; then
+      [[ -z "${2:-}" ]] && err "--nodes requires a number"
+      REQUESTED_NODES=$2
+      shift 2
+    fi
+    ;;
   *) usage ;;
 esac
 
@@ -53,7 +65,10 @@ esac
 #  DESTROY
 # ══════════════════════════════════════════════
 
-if [[ "$ACTION" == "--destroy" ]]; then
+if [[ "$ACTION" == "destroy" ]]; then
+
+  CLUSTER_NAME=$(tfvar cluster_name)
+  KUBECONFIG_FILE="$HOME/.kube/${CLUSTER_NAME}.yaml"
 
   # ── Step 1: Terraform init ──────────────────
   log "Step 1: Terraform init"
@@ -67,8 +82,7 @@ if [[ "$ACTION" == "--destroy" ]]; then
 
   # ── Step 3: Clear bootstrap endpoints ───────
   log "Step 3: Clearing bootstrap endpoints"
-  sed -i 's/^\(controlplane_bootstrap_endpoint *= *\)".*"/\1""/' "$TFVARS"
-  sed -i 's/^\(worker_bootstrap_endpoint *= *\)".*"/\1""/' "$TFVARS"
+  sed -i 's/^bootstrap_endpoints.*/bootstrap_endpoints = {}/' "$TFVARS"
   ok "Bootstrap endpoints cleared"
 
   # ── Step 4: Remove kubeconfig ───────────────
@@ -87,7 +101,15 @@ fi
 #  DEPLOY
 # ══════════════════════════════════════════════
 
-if [[ "$ACTION" == "--deploy" ]]; then
+if [[ "$ACTION" == "deploy" ]]; then
+
+  # ── Update node_count if --nodes was specified ─
+
+  if [[ $REQUESTED_NODES -gt 0 ]]; then
+    log "Setting node_count = $REQUESTED_NODES in $TFVARS"
+    sed -i "s/^node_count.*/node_count = $REQUESTED_NODES/" "$TFVARS"
+    ok "Updated $TFVARS"
+  fi
 
   # ── Read config from tfvars ──────────────────
 
@@ -95,8 +117,23 @@ if [[ "$ACTION" == "--deploy" ]]; then
   PVE_TOKEN=$(tfvar proxmox_api_token)
   PVE_NODE=$(tfvar proxmox_node)
   PVE_HOST=$(echo "$PVE_ENDPOINT" | grep -oP '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')
-  CP_VMID=$(tfvar node1_vmid)
-  WK_VMID=$(tfvar node2_vmid)
+
+  NODE_COUNT=$(tfvar node_count)
+  BASE_VMID=$(tfvar base_vmid)
+  BASE_IP=$(tfvar base_ip)
+  CLUSTER_NAME=$(tfvar cluster_name)
+  SUBNET=$(echo "$BASE_IP" | grep -oP '^\d+\.\d+\.\d+\.')
+  KUBECONFIG_FILE="$HOME/.kube/${CLUSTER_NAME}.yaml"
+
+  declare -a NODE_NAMES NODE_VMIDS
+  for ((i=0; i<NODE_COUNT; i++)); do
+    if [[ $i -eq 0 ]]; then
+      NODE_NAMES[i]="cp1"
+    else
+      NODE_NAMES[i]="wk${i}"
+    fi
+    NODE_VMIDS[i]=$(( BASE_VMID + i ))
+  done
 
   # ── Proxmox / Talos helper functions ────────
 
@@ -123,12 +160,9 @@ if [[ "$ACTION" == "--deploy" ]]; then
   }
 
   refresh_arp() {
-    local gw subnet
-    gw=$(tfvar node_gateway)
-    subnet=$(echo "$gw" | grep -oP '^\d+\.\d+\.\d+\.')
     ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no "terraform@${PVE_HOST}" \
-      "ping -c2 -W1 -b ${subnet}255 2>/dev/null; \
-       for i in \$(seq 128 200); do ping -c1 -W1 ${subnet}\$i >/dev/null 2>&1 & done; wait" \
+      "ping -c2 -W1 -b ${SUBNET}255 2>/dev/null; \
+       for i in \$(seq 128 200); do ping -c1 -W1 ${SUBNET}\$i >/dev/null 2>&1 & done; wait" \
       2>/dev/null || true
   }
 
@@ -160,8 +194,7 @@ if [[ "$ACTION" == "--deploy" ]]; then
     ok "No existing terraform state"
   fi
 
-  sed -i 's/^\(controlplane_bootstrap_endpoint *= *\)".*"/\1""/' "$TFVARS"
-  sed -i 's/^\(worker_bootstrap_endpoint *= *\)".*"/\1""/' "$TFVARS"
+  sed -i 's/^bootstrap_endpoints.*/bootstrap_endpoints = {}/' "$TFVARS"
   ok "Bootstrap endpoints cleared"
 
   # ── Step 2: Terraform init & validate ────────
@@ -174,13 +207,17 @@ if [[ "$ACTION" == "--deploy" ]]; then
 
   # ── Step 3: Create VMs (targeted apply) ──────
 
-  log "Step 3: Creating VMs"
-  terraform plan -input=false \
-    -target=proxmox_virtual_environment_download_file.talos_iso \
-    -target=proxmox_virtual_environment_vm.controlplane \
-    -target=proxmox_virtual_environment_vm.worker \
-    -out=tfplan-vms
+  log "Step 3: Creating $NODE_COUNT VM(s)"
+  for ((j=0; j<NODE_COUNT; j++)); do
+    echo "  ${NODE_NAMES[j]}  vmid=${NODE_VMIDS[j]}"
+  done
 
+  TARGET_ARGS="-target=proxmox_virtual_environment_download_file.talos_iso"
+  for ((j=0; j<NODE_COUNT; j++)); do
+    TARGET_ARGS+=" -target=proxmox_virtual_environment_vm.node[\"${NODE_NAMES[j]}\"]"
+  done
+
+  terraform plan -input=false $TARGET_ARGS -out=tfplan-vms
   terraform apply tfplan-vms
   rm -f tfplan-vms
   ok "VMs created"
@@ -189,62 +226,90 @@ if [[ "$ACTION" == "--deploy" ]]; then
 
   log "Step 4: Waiting for VMs to be running"
 
-  poll "VM ${CP_VMID} running" 5 check_vm_running "$CP_VMID"
-  ok "VM ${CP_VMID} (controlplane) is running"
-
-  poll "VM ${WK_VMID} running" 5 check_vm_running "$WK_VMID"
-  ok "VM ${WK_VMID} (worker) is running"
+  for ((j=0; j<NODE_COUNT; j++)); do
+    poll "VM ${NODE_VMIDS[j]} (${NODE_NAMES[j]}) running" 5 check_vm_running "${NODE_VMIDS[j]}"
+    ok "VM ${NODE_VMIDS[j]} (${NODE_NAMES[j]}) is running"
+  done
 
   # ── Step 5: Discover DHCP addresses ──────────
 
   log "Step 5: Discovering DHCP addresses (MAC → ARP → IP)"
 
-  CP_MAC="" WK_MAC=""
-  CP_DHCP="" WK_DHCP=""
+  declare -A NODE_MACS NODE_DHCP
   dhcp_elapsed=0
 
   while true; do
-    [[ -z "$CP_MAC" ]] && CP_MAC=$(get_mac "$CP_VMID")
-    [[ -z "$WK_MAC" ]] && WK_MAC=$(get_mac "$WK_VMID")
+    # Collect MACs for any nodes we don't have yet
+    for ((j=0; j<NODE_COUNT; j++)); do
+      name="${NODE_NAMES[j]}"
+      vmid="${NODE_VMIDS[j]}"
+      if [[ -z "${NODE_MACS[$name]:-}" ]]; then
+        NODE_MACS[$name]=$(get_mac "$vmid")
+      fi
+    done
 
-    if [[ -n "$CP_MAC" || -n "$WK_MAC" ]]; then
+    # Refresh ARP table if we have any MACs (before resolving)
+    any_mac=false
+    for ((j=0; j<NODE_COUNT; j++)); do
+      [[ -n "${NODE_MACS[${NODE_NAMES[j]}]:-}" ]] && any_mac=true
+    done
+    if $any_mac; then
       refresh_arp
     fi
 
-    if [[ -n "$CP_MAC" && -z "$CP_DHCP" ]]; then
-      CP_DHCP=$(mac_to_ip "$CP_MAC")
-    fi
-    if [[ -n "$WK_MAC" && -z "$WK_DHCP" ]]; then
-      WK_DHCP=$(mac_to_ip "$WK_MAC")
-    fi
+    # Resolve MAC → IP for nodes still missing DHCP
+    all_found=true
+    for ((j=0; j<NODE_COUNT; j++)); do
+      name="${NODE_NAMES[j]}"
+      if [[ -n "${NODE_MACS[$name]:-}" && -z "${NODE_DHCP[$name]:-}" ]]; then
+        NODE_DHCP[$name]=$(mac_to_ip "${NODE_MACS[$name]}")
+      fi
+      if [[ -z "${NODE_DHCP[$name]:-}" ]]; then
+        all_found=false
+      fi
+    done
 
-    if [[ -n "$CP_DHCP" && -n "$WK_DHCP" ]]; then
+    if $all_found; then
       break
     fi
 
-    echo "  Waiting for DHCP... CP_MAC=${CP_MAC:-pending} WK_MAC=${WK_MAC:-pending} CP=${CP_DHCP:-pending} WK=${WK_DHCP:-pending} (${dhcp_elapsed}s)"
+    printf '  Waiting for DHCP...'
+    for ((j=0; j<NODE_COUNT; j++)); do
+      name="${NODE_NAMES[j]}"
+      printf ' %s=%s' "$name" "${NODE_DHCP[$name]:-pending}"
+    done
+    printf ' (%ds)\n' "$dhcp_elapsed"
     sleep 10
     dhcp_elapsed=$(( dhcp_elapsed + 10 ))
   done
 
-  ok "Control-plane DHCP: $CP_DHCP  (MAC $CP_MAC)"
-  ok "Worker DHCP:        $WK_DHCP  (MAC $WK_MAC)"
+  for ((j=0; j<NODE_COUNT; j++)); do
+    name="${NODE_NAMES[j]}"
+    ok "${name} (VMID ${NODE_VMIDS[j]})  MAC=${NODE_MACS[$name]}  DHCP=${NODE_DHCP[$name]}"
+  done
 
   # ── Step 6: Poll until Talos API is reachable ─
 
   log "Step 6: Waiting for Talos API (port 50000) on DHCP addresses"
 
-  poll "Talos API on ${CP_DHCP}" 10 check_talos_port "$CP_DHCP"
-  ok "Talos API reachable on ${CP_DHCP}"
-
-  poll "Talos API on ${WK_DHCP}" 10 check_talos_port "$WK_DHCP"
-  ok "Talos API reachable on ${WK_DHCP}"
+  for ((j=0; j<NODE_COUNT; j++)); do
+    name="${NODE_NAMES[j]}"
+    poll "Talos API on ${NODE_DHCP[$name]} (${name})" 10 check_talos_port "${NODE_DHCP[$name]}"
+    ok "Talos API reachable on ${NODE_DHCP[$name]} (${name})"
+  done
 
   # ── Step 7: Write DHCP endpoints into tfvars ─
 
   log "Step 7: Setting bootstrap endpoints in $TFVARS"
-  sed -i "s|^\(controlplane_bootstrap_endpoint *= *\)\".*\"|\1\"${CP_DHCP}\"|" "$TFVARS"
-  sed -i "s|^\(worker_bootstrap_endpoint *= *\)\".*\"|\1\"${WK_DHCP}\"|" "$TFVARS"
+
+  ENDPOINTS_HCL="bootstrap_endpoints = {"
+  for ((j=0; j<NODE_COUNT; j++)); do
+    name="${NODE_NAMES[j]}"
+    ENDPOINTS_HCL+=" \"$name\" = \"${NODE_DHCP[$name]}\","
+  done
+  ENDPOINTS_HCL+=" }"
+
+  sed -i "s|^bootstrap_endpoints.*|${ENDPOINTS_HCL}|" "$TFVARS"
   ok "Updated $TFVARS"
 
   # ── Step 8: Full terraform apply ─────────────
@@ -268,16 +333,16 @@ if [[ "$ACTION" == "--deploy" ]]; then
     TOTAL_NODES=$(KUBECONFIG="$KUBECONFIG_TMP" kubectl get nodes --no-headers 2>/dev/null | wc -l)
     READY_NODES=$(KUBECONFIG="$KUBECONFIG_TMP" kubectl get nodes --no-headers 2>/dev/null | awk '$2 == "Ready"' | wc -l)
 
-    if [[ "$READY_NODES" -ge 2 && "$TOTAL_NODES" -ge 2 ]]; then
+    if [[ "$READY_NODES" -ge "$NODE_COUNT" && "$TOTAL_NODES" -ge "$NODE_COUNT" ]]; then
       break
     fi
 
-    printf '  Nodes Ready: %s/%s (%ds)\n' "$READY_NODES" "$TOTAL_NODES" "$ready_elapsed"
+    printf '  Nodes Ready: %s/%s (%ds)\n' "$READY_NODES" "$NODE_COUNT" "$ready_elapsed"
     sleep 10
     ready_elapsed=$(( ready_elapsed + 10 ))
   done
 
-  ok "All nodes Ready ($READY_NODES/$TOTAL_NODES)"
+  ok "All nodes Ready ($READY_NODES/$NODE_COUNT)"
 
   # ── Step 10: Save kubeconfig ─────────────────
 
@@ -294,6 +359,6 @@ if [[ "$ACTION" == "--deploy" ]]; then
 
   ok "Kubernetes cluster is ready!"
   echo ""
-  echo "  export KUBECONFIG=~/.kube/dc1-talos-claude.yaml"
+  echo "  export KUBECONFIG=$KUBECONFIG_FILE"
   echo ""
 fi

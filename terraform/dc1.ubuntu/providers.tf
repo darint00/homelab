@@ -15,7 +15,8 @@ provider "proxmox" {
   insecure  = var.proxmox_insecure
 
   ssh {
-    agent    = true
-    username = var.proxmox_ssh_user
+    agent       = false
+    username    = var.proxmox_ssh_user
+    private_key = file("~/.ssh/id_ed25519")
   }
 }

@@ -5,6 +5,7 @@ locals {
       name         = "${var.vm_name_prefix}-01"
       ipv4_address = var.node1_ipv4_address
       ipv4_gateway = var.node1_ipv4_gateway
+      role         = "server"
       startup      = "1"
     }
     node2 = {
@@ -12,6 +13,7 @@ locals {
       name         = "${var.vm_name_prefix}-02"
       ipv4_address = var.node2_ipv4_address
       ipv4_gateway = var.node2_ipv4_gateway
+      role         = "agent"
       startup      = "2"
     }
   }
@@ -33,9 +35,12 @@ locals {
         hostname       = n.name
         package_update = true
         package_upgrade = false
-        packages       = ["qemu-guest-agent"]
+        packages       = ["qemu-guest-agent", "curl", "open-iscsi", "nfs-common"]
         users          = local.cloud_init_users
-        runcmd         = ["systemctl enable --now qemu-guest-agent"]
+        runcmd         = [
+          "systemctl enable --now qemu-guest-agent",
+          "systemctl enable --now iscsid"
+        ]
       },
       var.cloud_init_password != "" ? {
         chpasswd = {
@@ -74,8 +79,8 @@ resource "proxmox_virtual_environment_vm" "ubuntu" {
   for_each = local.nodes
 
   name        = each.value.name
-  description = "Ubuntu node ${each.key} for ${var.cluster_name}"
-  tags        = ["ubuntu", "linux", var.cluster_name]
+  description = "k3s ${each.value.role} node (${each.key}) for ${var.cluster_name}"
+  tags        = ["ubuntu", "linux", "k3s", var.cluster_name, each.value.role]
 
   node_name = var.proxmox_node
   vm_id     = each.value.vm_id

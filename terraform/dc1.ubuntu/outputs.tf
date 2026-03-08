@@ -20,3 +20,11 @@ output "node_ipv4_plan" {
     node2 = var.node2_ipv4_address
   }
 }
+
+output "node_ips" {
+  description = "Primary IPv4 address for each node (from QEMU guest agent)"
+  value = {
+    for k, v in proxmox_virtual_environment_vm.ubuntu : k =>
+      try(v.ipv4_addresses[1][0], "unknown")
+  }
+}
