@@ -108,18 +108,77 @@ variable "cloud_init_ssh_public_keys" {
 }
 
 
-# New variable for dynamic nodes
-variable "nodes" {
-  description = "Map of node definitions. Each key is a node name, value is an object with vm_id, name, ipv4_address, ipv4_gateway, role, startup, cpu_cores, memory, disk_size."
-  type = map(object({
-    vm_id         = number
-    name          = string
-    ipv4_address  = string
-    ipv4_gateway  = string
-    role          = string
-    startup       = string
-    cpu_cores     = number
-    memory        = number
-    disk_size     = number
-  }))
+
+# Static variables for node1 and node2
+variable "node1_vmid" {
+  description = "VMID for node1"
+  type        = number
+}
+variable "node2_vmid" {
+  description = "VMID for node2"
+  type        = number
+}
+variable "node1_name" {
+  description = "Name for node1"
+  type        = string
+}
+variable "node2_name" {
+  description = "Name for node2"
+  type        = string
+}
+variable "node1_ipv4_address" {
+  description = "IPv4 address for node1 (dhcp or static)"
+  type        = string
+}
+variable "node2_ipv4_address" {
+  description = "IPv4 address for node2 (dhcp or static)"
+  type        = string
+}
+variable "node1_ipv4_gateway" {
+  description = "IPv4 gateway for node1 (empty if dhcp)"
+  type        = string
+}
+variable "node2_ipv4_gateway" {
+  description = "IPv4 gateway for node2 (empty if dhcp)"
+  type        = string
+}
+variable "node1_role" {
+  description = "Role for node1 (server)"
+  type        = string
+}
+variable "node2_role" {
+  description = "Role for node2 (agent)"
+  type        = string
+}
+variable "node1_startup" {
+  description = "Startup order for node1"
+  type        = string
+}
+variable "node2_startup" {
+  description = "Startup order for node2"
+  type        = string
+}
+variable "node1_cpu_cores" {
+  description = "CPU cores for node1"
+  type        = number
+}
+variable "node2_cpu_cores" {
+  description = "CPU cores for node2"
+  type        = number
+}
+variable "node1_memory" {
+  description = "Memory (MB) for node1"
+  type        = number
+}
+variable "node2_memory" {
+  description = "Memory (MB) for node2"
+  type        = number
+}
+variable "node1_disk_size" {
+  description = "Disk size (GB) for node1"
+  type        = number
+}
+variable "node2_disk_size" {
+  description = "Disk size (GB) for node2"
+  type        = number
 }

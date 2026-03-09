@@ -70,8 +70,8 @@ case "$ACTION" in
 
     # ── Step 4: Get VM IPs ──────────────────────
     log "Step 4: Getting VM IP addresses"
-    NODE1_IP=$(terraform output -json node_ips | jq -r '.node1')
-    NODE2_IP=$(terraform output -json node_ips | jq -r '.node2')
+    NODE1_IP=$(terraform output -raw node1_ip)
+    NODE2_IP=$(terraform output -raw node2_ip)
     [[ "$NODE1_IP" == "unknown" || -z "$NODE1_IP" ]] && err "Could not determine node1 IP"
     [[ "$NODE2_IP" == "unknown" || -z "$NODE2_IP" ]] && err "Could not determine node2 IP"
     ok "node1 (server): $NODE1_IP"
