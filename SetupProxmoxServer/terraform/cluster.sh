@@ -80,6 +80,7 @@ if [[ "$ACTION" == "destroy" ]]; then
   vm_status() {
     curl -sk --max-time 5 -H "Authorization: PVEAPIToken=${PVE_TOKEN}" \
       "${PVE_ENDPOINT}/api2/json/nodes/${PVE_NODE}/qemu/${1}/status/current" \
+      2>/dev/null \
       | jq -r '.data.status // empty' 2>/dev/null || true
   }
 
@@ -212,13 +213,16 @@ if [[ "$ACTION" == "deploy" ]]; then
   vm_status() {
     curl -sk --max-time 5 -H "Authorization: PVEAPIToken=${PVE_TOKEN}" \
       "${PVE_ENDPOINT}/api2/json/nodes/${PVE_NODE}/qemu/${1}/status/current" \
+      2>/dev/null \
       | jq -r '.data.status // empty' 2>/dev/null || true
   }
 
   get_mac() {
     curl -sk --max-time 5 -H "Authorization: PVEAPIToken=${PVE_TOKEN}" \
       "${PVE_ENDPOINT}/api2/json/nodes/${PVE_NODE}/qemu/${1}/config" \
-      | jq -r '.data.net0 // empty' | grep -oP '[0-9A-Fa-f:]{17}' | head -1 || true
+      2>/dev/null \
+      | jq -r '.data.net0 // empty' 2>/dev/null \
+      | grep -oP '[0-9A-Fa-f:]{17}' | head -1 || true
   }
 
   mac_to_ip() {
@@ -234,7 +238,7 @@ if [[ "$ACTION" == "deploy" ]]; then
   refresh_arp() {
     ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no "terraform@${PVE_HOST}" \
       "ping -c2 -W1 -b ${SUBNET}255 2>/dev/null; \
-       for i in \$(seq 128 200); do ping -c1 -W1 ${SUBNET}\$i >/dev/null 2>&1 & done; wait" \
+       for i in \$(seq 2 254); do ping -c1 -W1 ${SUBNET}\$i >/dev/null 2>&1 & done; wait" \
       2>/dev/null || true
   }
 
@@ -332,7 +336,11 @@ if [[ "$ACTION" == "deploy" ]]; then
       name="${NODE_NAMES[j]}"
       vmid="${NODE_VMIDS[j]}"
       if [[ -z "${NODE_MACS[$name]:-}" ]]; then
-        NODE_MACS[$name]=$(get_mac "$vmid")
+        local_mac=$(get_mac "$vmid")
+        if [[ -n "$local_mac" ]]; then
+          NODE_MACS[$name]="$local_mac"
+          printf '  MAC found: %s → %s\n' "$name" "$local_mac"
+        fi
       fi
     done
 
@@ -342,6 +350,7 @@ if [[ "$ACTION" == "deploy" ]]; then
     done
     if $any_mac; then
       refresh_arp
+      sleep 2  # let ARP cache settle after the ping sweep
     fi
 
     all_found=true
@@ -362,7 +371,13 @@ if [[ "$ACTION" == "deploy" ]]; then
     printf '  Waiting for DHCP...'
     for ((j=0; j<NODE_COUNT; j++)); do
       name="${NODE_NAMES[j]}"
-      printf ' %s=%s' "$name" "${NODE_DHCP[$name]:-pending}"
+      if [[ -n "${NODE_DHCP[$name]:-}" ]]; then
+        printf ' %s=%s' "$name" "${NODE_DHCP[$name]}"
+      elif [[ -n "${NODE_MACS[$name]:-}" ]]; then
+        printf ' %s=mac-ok/no-ip' "$name"
+      else
+        printf ' %s=no-mac' "$name"
+      fi
     done
     printf ' (%ds)\n' "$dhcp_elapsed"
     sleep 10

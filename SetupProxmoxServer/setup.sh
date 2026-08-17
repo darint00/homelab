@@ -92,7 +92,7 @@ echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://
 
 # Install Terraform
 apt update
-apt install terraform -y
+apt install jq terraform -y
 
 
 ########################################################## 
