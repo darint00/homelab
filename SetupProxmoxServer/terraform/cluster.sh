@@ -249,8 +249,6 @@ if [[ "$ACTION" == "deploy" ]]; then
     done
   }
 
-  check_vm_running() { [[ "$(vm_status "$1")" == "running" ]]; }
-
   check_talos_port() {
     timeout 3 bash -c "echo >/dev/tcp/${1}/50000" 2>/dev/null
   }
@@ -294,14 +292,33 @@ if [[ "$ACTION" == "deploy" ]]; then
   rm -f tfplan-vms
   ok "VMs created"
 
-  # ── Step 4: Poll until VMs are running ───────
+  # ── Step 4: Start VMs if provider left them stopped ─
+  # bpg/proxmox may create VMs without starting them; the DHCP poll in Step 5
+  # is the real gate for "VM is alive on the network".
 
-  log "Step 4: Waiting for VMs to be running"
+  log "Step 4: Ensuring VMs are started"
 
   for ((j=0; j<NODE_COUNT; j++)); do
-    poll "VM ${NODE_VMIDS[j]} (${NODE_NAMES[j]}) running" 5 check_vm_running "${NODE_VMIDS[j]}"
-    ok "VM ${NODE_VMIDS[j]} (${NODE_NAMES[j]}) is running"
+    vmid="${NODE_VMIDS[j]}"
+    name="${NODE_NAMES[j]}"
+    current_status=$(vm_status "$vmid")
+
+    case "$current_status" in
+      running|prelaunch)
+        ok "VM ${vmid} (${name}) is ${current_status}" ;;
+      stopped)
+        printf '  VM %d (%s) is stopped — sending start command\n' "$vmid" "$name"
+        curl -sk -X POST -H "Authorization: PVEAPIToken=${PVE_TOKEN}" \
+          "${PVE_ENDPOINT}/api2/json/nodes/${PVE_NODE}/qemu/${vmid}/status/start" \
+          >/dev/null 2>&1 || true
+        ok "VM ${vmid} (${name}) start command sent" ;;
+      *)
+        printf '  VM %d (%s) status: %s — continuing\n' "$vmid" "$name" "${current_status:-unknown}" ;;
+    esac
   done
+
+  # Brief pause so VMs can transition out of prelaunch before DHCP polling begins
+  sleep 5
 
   # ── Step 5: Discover DHCP addresses ──────────
 
