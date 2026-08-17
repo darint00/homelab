@@ -13,6 +13,7 @@ function checkRC(){
 }
 
 HOSTNAME=`hostname`
+GITREPOS=/home/GITREPOS
 
 ########################################################## 
 ### [1] setup darint userid
@@ -38,19 +39,18 @@ chmod 440 "$SUDO_FILE"
 ########################################################## 
 
 ### mkdir for mach-setup
-mkdir -p ~/darint/GITREPOS
-  checkRC  $? "mkdir -p ~/darint/GITREPOS"
-GITREPOS=~/darint/GITREPOS
+mkdir -p $GITREPOS 
+  checkRC  $? "mkdir -p $GITREPOS"
 
 
 ########################################################## 
 ### [3] Setup bashrc.bashrc 
 ########################################################## 
-found=`grep bashrc.bashrc ~/.bashrc | wc -l`
+found=`grep bashrc.bashrc /home/darint/.bashrc | wc -l`
 if [[ "$found" == "0" ]]; then
-  echo ". $GITREPOS/homelab/bashrc.bashrc" >> ~/.bashrc
+  echo ". $GITREPOS/homelab/bashrc.bashrc" >> /home/darint/.bashrc
 fi  
-  checkRC  $? "Add bash.rc to .bashrc"
+  checkRC  $? "Add bash.rc to /home/darint/.bashrc"
 
 
 
@@ -64,10 +64,19 @@ git clone git@github.com:darint00/K8S.git  k8s
 
 
 ########################################################## 
+### Disable proxmox repos 
+########################################################## 
+cd /etc/apt/sources.list.d
+sudo mv ceph.sources ceph.disabled
+sudo mv pve-enterprise.sources pve-enterprise.disabled
+
+
+########################################################## 
 ### [5] Install Terraform 
 ########################################################## 
 apt update 
-apt install -y gnupg software-properties-common wget unzip
+#apt install -y gnupg software-properties-common wget unzip
+apt install -y gnupg  wget unzip lsb-release
 
 # Add HashiCorp GPG key
 wget -O- https://apt.releases.hashicorp.com/gpg | gpg --dearmor | tee /usr/share/keyrings/hashicorp-archive-keyring.gpg
@@ -76,7 +85,8 @@ wget -O- https://apt.releases.hashicorp.com/gpg | gpg --dearmor | tee /usr/share
 
 # Add HashiCorp repo
 echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | tee /etc/apt/sources.list.d/hashicorp.list
-
+echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com trixie main" | \
+  sudo tee /etc/apt/sources.list.d/hashicorp.list
 
 
 

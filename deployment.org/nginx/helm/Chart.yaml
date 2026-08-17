@@ -1,0 +1,6 @@
+apiVersion: v2
+name: nginx
+version: 0.1.0
+description: Helm chart for deploying NGINX to Kubernetes
+maintainers:
+  - name: homelab

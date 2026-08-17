@@ -1,0 +1,18 @@
+# ── Proxmox connection ─────────────────────────
+proxmox_endpoint  = "https://<PROXMOX_IP>:8006"
+proxmox_api_token = "<USER>@<REALM>!<TOKEN_ID>=<SECRET>"
+proxmox_node      = "pve"
+
+# ── Cluster ────────────────────────────────────
+cluster_name   = "dc1"
+vm_name_prefix = "dc1"
+
+# ── Nodes ──────────────────────────────────────
+# 3 nodes: dc1-node1 (controlplane), dc1-node2 (worker), dc1-node3 (worker)
+# base_ip is node1's IP; each subsequent node increments the last octet by 1.
+# base_vmid is node1's Proxmox VMID; subsequent nodes increment by 1.
+# bootstrap_endpoints is populated automatically by cluster.sh during deploy.
+node_count = 3
+base_ip    = "192.168.86.130"
+base_vmid  = 320
+bootstrap_endpoints = {}

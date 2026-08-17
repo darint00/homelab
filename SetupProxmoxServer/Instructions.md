@@ -25,7 +25,7 @@
 5. ### Clone This Repo
     git clone git@github.com:darint00/homelab
 
-6. ### Copy sshkey to laptop (passwordless)  
+6. ### Copy sshkey from laptop (passwordless)  
     ssh-copy-id darint@dc1
 
 
