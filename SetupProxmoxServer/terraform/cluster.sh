@@ -83,8 +83,8 @@ if [[ "$ACTION" == "destroy" ]]; then
       | jq -r '.data.status // empty' 2>/dev/null || true
   }
 
-  # Hard-stops and deletes a VM via the Proxmox API, including its disks.
-  # Called after terraform destroy as a safety net for any lingering VMs.
+  # Hard-stops, unlocks, and deletes a VM via the Proxmox API including its disks.
+  # Polls until Proxmox confirms the VM is fully gone (no longer visible in the GUI).
   force_remove_vm() {
     local vmid="$1"
     local status
@@ -95,27 +95,47 @@ if [[ "$ACTION" == "destroy" ]]; then
       return 0
     fi
 
-    printf '  VM %d still present (%s) — force-removing\n' "$vmid" "$status"
+    printf '  VM %d present (%s)\n' "$vmid" "$status"
 
+    # Hard power-off (Talos has no guest agent so ACPI shutdown won't work)
     if [[ "$status" == "running" ]]; then
-      # Hard power-off (no ACPI — safe for Talos which has no guest agent)
+      printf '  Stopping VM %d...\n' "$vmid"
       curl -sk -X POST -H "Authorization: PVEAPIToken=${PVE_TOKEN}" \
         "${PVE_ENDPOINT}/api2/json/nodes/${PVE_NODE}/qemu/${vmid}/status/stop" \
         >/dev/null 2>&1 || true
 
       local waited=0
       while [[ "$(vm_status "$vmid")" == "running" && $waited -lt 60 ]]; do
-        sleep 3
-        waited=$(( waited + 3 ))
+        sleep 3; waited=$(( waited + 3 ))
       done
+      ok "VM $vmid stopped"
     fi
 
-    # purge removes HA/pool config; destroy-unreferenced-disks removes disk images
+    # Remove any lock left by a failed Terraform run so the DELETE isn't rejected
+    curl -sk -X PUT \
+      -H "Authorization: PVEAPIToken=${PVE_TOKEN}" \
+      -H "Content-Type: application/x-www-form-urlencoded" \
+      -d "delete=lock" \
+      "${PVE_ENDPOINT}/api2/json/nodes/${PVE_NODE}/qemu/${vmid}/config" \
+      >/dev/null 2>&1 || true
+
+    # Delete the VM; purge removes it from pool/HA; destroy-unreferenced-disks removes orphaned disk images
+    printf '  Deleting VM %d...\n' "$vmid"
     curl -sk -X DELETE -H "Authorization: PVEAPIToken=${PVE_TOKEN}" \
       "${PVE_ENDPOINT}/api2/json/nodes/${PVE_NODE}/qemu/${vmid}?destroy-unreferenced-disks=1&purge=1" \
       >/dev/null 2>&1 || true
 
-    ok "Force-deleted VM $vmid"
+    # Poll until Proxmox confirms the VM is fully gone (deletion is an async task)
+    local del_waited=0
+    while [[ -n "$(vm_status "$vmid")" && $del_waited -lt 60 ]]; do
+      sleep 3; del_waited=$(( del_waited + 3 ))
+    done
+
+    if [[ -n "$(vm_status "$vmid")" ]]; then
+      printf '  \033[1;33mWARNING: VM %d still appears in Proxmox — manual removal may be needed\033[0m\n' "$vmid"
+    else
+      ok "VM $vmid removed from Proxmox"
+    fi
   }
 
   # ── Step 1: Terraform init ──────────────────
