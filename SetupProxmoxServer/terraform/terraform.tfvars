@@ -1,6 +1,6 @@
 # ── Proxmox connection ─────────────────────────
 proxmox_endpoint  = "https://192.168.86.240:8006"
-proxmox_api_token = "terraform@pve!terraform=8f7b3ca8-dd9f-4f9c-b658-c271cd79a5d4"
+proxmox_api_token = "terraform@pve!terraform=b1ca8020-6ecc-458e-92d8-9b8f34dae01d"
 proxmox_insecure  = true
 proxmox_ssh_user  = "terraform"
 proxmox_node      = "pve"
@@ -20,7 +20,7 @@ base_ip    = "192.168.86.130"
 base_vmid  = 330
 
 # Populated automatically by cluster.sh --deploy; leave empty
-bootstrap_endpoints = {}
+bootstrap_endpoints = { "node1" = "192.168.86.189", "node2" = "192.168.86.188", "node3" = "192.168.86.164", }
 
 # ── Networking ─────────────────────────────────
 vm_network_bridge = "vmbr0"

@@ -225,16 +225,6 @@ if [[ "$ACTION" == "deploy" ]]; then
       | grep -oP '[0-9A-Fa-f:]{17}' | head -1 || true
   }
 
-  mac_to_ip() {
-    local mac_lower
-    mac_lower=$(echo "$1" | tr '[:upper:]' '[:lower:]')
-    ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no "terraform@${PVE_HOST}" \
-      "ip neigh show" 2>/dev/null \
-      | grep -i "$mac_lower" \
-      | grep -oP '^\d+\.\d+\.\d+\.\d+' \
-      | head -1 || true
-  }
-
   refresh_arp() {
     ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no "terraform@${PVE_HOST}" \
       "ping -c2 -W1 -b ${SUBNET}255 2>/dev/null; \
@@ -344,25 +334,37 @@ if [[ "$ACTION" == "deploy" ]]; then
       fi
     done
 
-    any_mac=false
-    for ((j=0; j<NODE_COUNT; j++)); do
-      [[ -n "${NODE_MACS[${NODE_NAMES[j]}]:-}" ]] && any_mac=true
-    done
-    if $any_mac; then
-      refresh_arp
-      sleep 2  # let ARP cache settle after the ping sweep
-    fi
+    # Fetch the full ARP table from the Proxmox bridge in one SSH call and match all MACs locally
+    arp_table=$(ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no "terraform@${PVE_HOST}" \
+      "ip neigh show" 2>/dev/null || true)
 
     all_found=true
     for ((j=0; j<NODE_COUNT; j++)); do
       name="${NODE_NAMES[j]}"
       if [[ -n "${NODE_MACS[$name]:-}" && -z "${NODE_DHCP[$name]:-}" ]]; then
-        NODE_DHCP[$name]=$(mac_to_ip "${NODE_MACS[$name]}")
+        mac_lower=$(echo "${NODE_MACS[$name]}" | tr '[:upper:]' '[:lower:]')
+        ip=$(echo "$arp_table" | grep -i "$mac_lower" | grep -oP '^\d+\.\d+\.\d+\.\d+' | head -1 || true)
+        if [[ -n "$ip" ]]; then
+          NODE_DHCP[$name]="$ip"
+          ok "DHCP resolved: ${name} → ${ip}"
+        fi
       fi
       if [[ -z "${NODE_DHCP[$name]:-}" ]]; then
         all_found=false
       fi
     done
+
+    # Only sweep ARP if we have MACs but still missing IPs
+    if ! $all_found; then
+      any_mac=false
+      for ((j=0; j<NODE_COUNT; j++)); do
+        [[ -n "${NODE_MACS[${NODE_NAMES[j]}]:-}" ]] && any_mac=true
+      done
+      if $any_mac; then
+        refresh_arp
+        sleep 2
+      fi
+    fi
 
     if $all_found; then
       break

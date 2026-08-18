@@ -31,14 +31,6 @@ locals {
 
 # ── ISO ──────────────────────────────────────
 
-resource "proxmox_virtual_environment_download_file" "talos_iso" {
-  content_type = "iso"
-  datastore_id = var.vm_iso_datastore
-  node_name    = var.proxmox_node
-  url          = "https://github.com/siderolabs/talos/releases/download/${var.talos_version}/metal-amd64.iso"
-  file_name            = "${var.cluster_name}-${var.talos_version}-metal-amd64.iso"
-  overwrite_unmanaged  = true
-}
 
 # ── Talos secrets ────────────────────────────
 
@@ -122,7 +114,7 @@ resource "proxmox_virtual_environment_vm" "node" {
 
   cdrom {
     enabled   = true
-    file_id   = proxmox_virtual_environment_download_file.talos_iso.id
+    file_id   = "local:iso/dc1-v1.9.3-metal-amd64.iso"
     interface = "ide0"
   }
 
